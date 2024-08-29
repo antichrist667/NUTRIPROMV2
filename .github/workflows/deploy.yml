@@ -1,0 +1,40 @@
+    name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+      GCP_REGION: ${{ secrets.GCP_REGION }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '14'
+
+    - name: Set up gcloud CLI and Docker
+      run: |
+        echo "$GCP_SA_KEY" > "${HOME}/gcloud-key.json"
+        gcloud auth activate-service-account --key-file="${HOME}/gcloud-key.json"
+        gcloud config set project $GCP_PROJECT_ID
+        gcloud auth configure-docker
+
+    - name: Build and push app Docker image to Google Container Registry
+      run: |
+        docker build -t gcr.io/$GCP_PROJECT_ID/app:latest ./app
+        docker push gcr.io/$GCP_PROJECT_ID/app:latest
+
+    - name: Deploy app to Cloud Run
+      run: |
+        gcloud run deploy app --image gcr.io/$GCP_PROJECT_ID/app:latest --platform managed --region $GCP_REGION --allow-unauthenticated
